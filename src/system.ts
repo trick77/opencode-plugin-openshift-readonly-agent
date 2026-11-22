@@ -3,7 +3,7 @@
 
 import { spawn } from 'node:child_process'
 import { randomBytes } from 'node:crypto'
-import { chmod, mkdir, readFile, rename, writeFile } from 'node:fs/promises'
+import { chmod, mkdir, readFile, rename, stat, writeFile } from 'node:fs/promises'
 import { dirname } from 'node:path'
 import { type PromptResult, promptSecret } from './prompt.ts'
 
@@ -24,6 +24,8 @@ export type { PromptResult }
 export interface System {
   run(command: string, args: readonly string[], options: RunOptions): Promise<RunResult>
   readText(path: string): Promise<string | undefined>
+  /** Modification time in ms, or undefined when the file does not exist. */
+  mtime(path: string): Promise<number | undefined>
   /** Writes a file readable by the owner only. */
   writePrivate(path: string, content: string): Promise<void>
   /** Desktop dialog with hidden input; `env` carries the session's DISPLAY and friends. */
@@ -83,9 +85,18 @@ async function writePrivate(path: string, content: string): Promise<void> {
   await rename(tmp, path)
 }
 
+async function mtime(path: string): Promise<number | undefined> {
+  try {
+    return (await stat(path)).mtimeMs
+  } catch {
+    return undefined
+  }
+}
+
 export const nodeSystem: System = {
   run,
   readText,
+  mtime,
   writePrivate,
   promptSecret: (title, message, env) => promptSecret(run, { title, message, env, platform: process.platform }),
   now: () => Date.now(),

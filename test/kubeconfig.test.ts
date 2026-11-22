@@ -4,6 +4,7 @@ import {
   emptyKubeconfig,
   entryName,
   loginFromUserEntry,
+  oauthLogin,
   parseCurrentContext,
   parseScopedKubeconfig,
   removeServer,
@@ -41,21 +42,38 @@ test('login name only from oc-login style user entries', () => {
   assert.equal(loginFromUserEntry(undefined), undefined)
 })
 
+test('logins with a colon: kube:admin maps to kubeadmin, others cannot use a password', () => {
+  assert.equal(loginFromUserEntry('kube:admin/api-example-com:6443'), 'kubeadmin')
+  assert.equal(oauthLogin('kube:admin'), 'kubeadmin')
+  assert.equal(oauthLogin('system:serviceaccount:ns:sa'), undefined)
+  assert.equal(oauthLogin(''), undefined)
+  assert.equal(oauthLogin('alice'), 'alice')
+})
+
+test('entries are keyed by server and login', () => {
+  assert.equal(entryName('https://api.example.com:6443', 'alice'), 'readonly-agent/alice@api.example.com:6443')
+  const a = upsertServer(emptyKubeconfig(), { cluster: { server: 'https://a:6443' }, username: 'admin-alice', token: 'ADMIN', namespace: 'x' })
+  const b = upsertServer(a, { cluster: { server: 'https://a:6443' }, username: 'alice', token: 'ALICE', namespace: 'x' })
+  assert.equal(storedToken(b, 'https://a:6443', 'alice'), 'ALICE')
+  assert.equal(storedToken(b, 'https://a:6443', 'admin-alice'), 'ADMIN')
+  assert.equal(b['current-context'], entryName('https://a:6443', 'alice'))
+})
+
 test('upsert keeps other servers and makes the new one current', () => {
-  const a = upsertServer(emptyKubeconfig(), { cluster: { server: 'https://a:6443' }, token: 't1', namespace: 'x' })
-  const b = upsertServer(a, { cluster: { server: 'https://b:6443' }, token: 't2', namespace: undefined })
-  const a2 = upsertServer(b, { cluster: { server: 'https://a:6443' }, token: 't3', namespace: 'y' })
-  assert.equal(a2['current-context'], entryName('https://a:6443'))
+  const a = upsertServer(emptyKubeconfig(), { cluster: { server: 'https://a:6443' }, username: 'u', token: 't1', namespace: 'x' })
+  const b = upsertServer(a, { cluster: { server: 'https://b:6443' }, username: 'u', token: 't2', namespace: undefined })
+  const a2 = upsertServer(b, { cluster: { server: 'https://a:6443' }, username: 'u', token: 't3', namespace: 'y' })
+  assert.equal(a2['current-context'], entryName('https://a:6443', 'u'))
   assert.equal(a2.users.length, 2)
-  assert.equal(storedToken(a2, 'https://a:6443'), 't3')
-  assert.equal(storedToken(a2, 'https://b:6443'), 't2')
-  assert.equal(a2.contexts.find((c) => c.name === entryName('https://a:6443'))?.context.namespace, 'y')
-  assert.equal('namespace' in b.contexts.find((c) => c.name === entryName('https://b:6443'))!.context, false)
+  assert.equal(storedToken(a2, 'https://a:6443', 'u'), 't3')
+  assert.equal(storedToken(a2, 'https://b:6443', 'u'), 't2')
+  assert.equal(a2.contexts.find((c) => c.name === entryName('https://a:6443', 'u'))?.context.namespace, 'y')
+  assert.equal('namespace' in b.contexts.find((c) => c.name === entryName('https://b:6443', 'u'))!.context, false)
 })
 
 test('remove drops the entry and clears it as current', () => {
-  const a = upsertServer(emptyKubeconfig(), { cluster: { server: 'https://a:6443' }, token: 't1', namespace: undefined })
-  const r = removeServer(a, 'https://a:6443')
+  const a = upsertServer(emptyKubeconfig(), { cluster: { server: 'https://a:6443' }, username: 'u', token: 't1', namespace: undefined })
+  const r = removeServer(a, 'https://a:6443', 'u')
   assert.equal(r.users.length, 0)
   assert.equal(r['current-context'], '')
 })
