@@ -15,7 +15,13 @@
 - `opencode api shell.create` (user shells via API) does NOT fire `shell.create.before`.
 - Subagent shells fire the same hooks (probed). `execute` (Code Mode) = JS with `fetch` + opencode session/worktree tools only, no shell, no fs.
 - File tools hit `permission.evaluate` with action `read`/`edit`/…; `resources` is project-relative when inside the project (`home/.kube/config`), so `checkPath` matches `.kube/` without a home prefix.
-- `setup` may run per location → agent state is module-scoped (one dialog per process, not per project).
+- grep/glob: `permission.evaluate` resources = the search PATTERN only; the root shows up as `external_directory` `<dir>/*` (too coarse to deny on). The real `path` is only in `tool.execute.before` input → `checkToolInput` there. A throw in that hook fails the tool call with the message, nothing runs (probed: grep from `~` found `.kube/config` before).
+- `oc get --raw` token check: only auth errors in stderr (`Unauthorized`, `must be logged in`) count as rejected; anything else = unreachable → keep the token, no dialog.
+- `setup` may run per location → agent state is module-scoped (one dialog per process, not per project). `ctx.location.directory` = that location's project dir → cwd for relative/missing grep/glob paths.
+- Every shell (not only oc ones) stats the source kubeconfig; on an mtime change a non-interactive prepare re-syncs the file (scripts calling oc). Never a dialog there.
+- One scoped file per source KUBECONFIG (hash suffix): two opencode processes with different KUBECONFIG must not rewrite each other's current-context.
+- Mint failure → `current-context: ''`, never another login's entry left current.
+- OAuth authorize uses system trust first, kubeconfig CA only on a curl TLS exit code: the OAuth route is the ingress cert, the kubeconfig CA is the API server's.
 
 ## OpenShift OAuth (verified on a real cluster, 2026-11)
 

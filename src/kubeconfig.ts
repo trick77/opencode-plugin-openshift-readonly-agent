@@ -72,6 +72,18 @@ export function parseCurrentContext(json: string): CurrentContext | undefined {
 }
 
 /**
+ * The login to send to the OAuth server for an OpenShift user name.
+ * `kube:admin` is how OpenShift names the `kubeadmin` login; any other name
+ * with a colon (`system:serviceaccount:…`) cannot log in with a password, and
+ * would also break `user:password` in curl.
+ */
+export function oauthLogin(name: string): string | undefined {
+  if (name === 'kube:admin') return 'kubeadmin'
+  if (name === '' || name.includes(':')) return undefined
+  return name
+}
+
+/**
  * `oc login` names kubeconfig users `<login>/<api-host-with-dashes>:<port>`.
  * Anything else (a context written by hand, an exec plugin) reveals nothing.
  */
@@ -79,12 +91,16 @@ export function loginFromUserEntry(name: unknown): string | undefined {
   if (typeof name !== 'string') return undefined
   const slash = name.indexOf('/')
   if (slash <= 0 || slash === name.length - 1) return undefined
-  return name.slice(0, slash)
+  return oauthLogin(name.slice(0, slash))
 }
 
-/** Stable entry name for one API server, e.g. `readonly-agent/api.example.com:6443`. */
-export function entryName(server: string): string {
-  return `readonly-agent/${new URL(server).host}`
+/**
+ * Stable entry name per API server and login, e.g.
+ * `readonly-agent/alice@api.example.com:6443`. Keyed by login too, so after
+ * `oc login -u someone-else` the agent never keeps the previous user's token.
+ */
+export function entryName(server: string, username: string): string {
+  return `readonly-agent/${username}@${new URL(server).host}`
 }
 
 export function emptyKubeconfig(): Kubeconfig {
@@ -105,9 +121,9 @@ export function parseScopedKubeconfig(json: string | undefined): Kubeconfig {
   }
 }
 
-/** The token stored for an API server, if any. */
-export function storedToken(config: Kubeconfig, server: string): string | undefined {
-  const name = entryName(server)
+/** The token stored for an API server and login, if any. */
+export function storedToken(config: Kubeconfig, server: string, username: string): string | undefined {
+  const name = entryName(server, username)
   return config.users.find((u) => u.name === name)?.user.token
 }
 
@@ -117,9 +133,14 @@ export function storedToken(config: Kubeconfig, server: string): string | undefi
  */
 export function upsertServer(
   config: Kubeconfig,
-  input: { readonly cluster: ClusterEntry; readonly token: string; readonly namespace: string | undefined },
+  input: {
+    readonly cluster: ClusterEntry
+    readonly username: string
+    readonly token: string
+    readonly namespace: string | undefined
+  },
 ): Kubeconfig {
-  const name = entryName(input.cluster.server)
+  const name = entryName(input.cluster.server, input.username)
   const others = <T extends { readonly name: string }>(list: readonly T[]) => list.filter((e) => e.name !== name)
   return {
     apiVersion: 'v1',
@@ -135,8 +156,8 @@ export function upsertServer(
 }
 
 /** Drops an API server's entry and current context, e.g. after a failed renewal. */
-export function removeServer(config: Kubeconfig, server: string): Kubeconfig {
-  const name = entryName(server)
+export function removeServer(config: Kubeconfig, server: string, username: string): Kubeconfig {
+  const name = entryName(server, username)
   const others = <T extends { readonly name: string }>(list: readonly T[]) => list.filter((e) => e.name !== name)
   return {
     ...config,

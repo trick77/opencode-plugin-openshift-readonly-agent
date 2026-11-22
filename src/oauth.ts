@@ -61,22 +61,35 @@ export function curlConfigValue(value: string): string {
   return `"${value.replace(/\\/g, '\\\\').replace(/"/g, '\\"').replace(/\n/g, '\\n').replace(/\r/g, '\\r').replace(/\t/g, '\\t')}"`
 }
 
+/** How curl reaches a cluster, taken from its kubeconfig entry. */
 export interface CurlTls {
-  /** PEM file with the CA that signed the API server, from the kubeconfig. */
+  /** PEM file with the CA from the kubeconfig. */
   readonly caFile?: string
   /** The kubeconfig sets insecure-skip-tls-verify for this cluster. */
   readonly insecure?: boolean
+  /** The kubeconfig's `proxy-url` for this cluster. */
+  readonly proxy?: string
 }
 
 /**
+ * curl exit codes for TLS trouble (35 handshake, 51/60 peer certificate,
+ * 58/59 local certificate, 77 CA file, 83/90/91 issuer/pinning/status).
+ */
+export const CURL_TLS_ERRORS: ReadonlySet<number> = new Set([35, 51, 53, 54, 58, 59, 60, 64, 66, 77, 80, 82, 83, 90, 91])
+
+/**
  * The curl config for the authorize request. It goes to curl on stdin, so the
- * password never appears in a process listing.
+ * password never appears in a process listing. `caFile` is only set on a
+ * retry: the OAuth route usually sits behind the ingress certificate, which
+ * the system trust store knows and the kubeconfig's API-server CA may not.
  */
 export function authorizeCurlConfig(input: {
   readonly issuer: string
   readonly username: string
   readonly password: string
   readonly insecure?: boolean
+  readonly caFile?: string
+  readonly proxy?: string
 }): string {
   return [
     `url = ${curlConfigValue(authorizeUrl(input.issuer))}`,
@@ -85,8 +98,11 @@ export function authorizeCurlConfig(input: {
     'dump-header = "-"',
     'output = "/dev/null"',
     'silent',
+    'show-error',
     'max-time = 30',
     ...(input.insecure ? ['insecure'] : []),
+    ...(input.caFile ? [`cacert = ${curlConfigValue(input.caFile)}`] : []),
+    ...(input.proxy ? [`proxy = ${curlConfigValue(input.proxy)}`] : []),
     '',
   ].join('\n')
 }
@@ -96,11 +112,13 @@ export function discoveryCurlArgs(server: string, tls: CurlTls): string[] {
   const url = new URL('/.well-known/oauth-authorization-server', server).toString()
   return [
     '--silent',
+    '--show-error',
     '--fail',
     '--max-time',
     '15',
     ...(tls.caFile ? ['--cacert', tls.caFile] : []),
     ...(tls.insecure ? ['--insecure'] : []),
+    ...(tls.proxy ? ['--proxy', tls.proxy] : []),
     url,
   ]
 }
