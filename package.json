@@ -1,0 +1,51 @@
+{
+  "$schema": "https://json.schemastore.org/package.json",
+  "name": "opencode-plugin-openshift-readonly-agent",
+  "version": "0.1.0",
+  "description": "OpenCode 2 plugin: the agent's oc, kubectl and helm run with a read-only OpenShift OAuth token (scope role:view:*), never with your own login",
+  "type": "module",
+  "main": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "files": [
+    "src/",
+    "README.md"
+  ],
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "build": "tsc --noEmit",
+    "test": "tsc --noEmit && node --test test/*.test.ts"
+  },
+  "keywords": [
+    "opencode",
+    "opencode-plugin",
+    "openshift",
+    "kubernetes",
+    "oc",
+    "kubectl",
+    "read-only",
+    "ai-agent",
+    "guardrail"
+  ],
+  "author": "trick77 (https://github.com/trick77)",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/trick77/opencode-plugin-openshift-readonly-agent.git"
+  },
+  "homepage": "https://github.com/trick77/opencode-plugin-openshift-readonly-agent#readme",
+  "bugs": {
+    "url": "https://github.com/trick77/opencode-plugin-openshift-readonly-agent/issues"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "devDependencies": {
+    "@opencode/plugin": "2.3.2",
+    "@types/node": "26.6.6",
+    "typescript": "7.0.2"
+  }
+}
